@@ -36,7 +36,7 @@ def init_db():
     db = sqlite3.connect(DATABASE)
     cur = db.cursor()
 
-    # Existing transactions table
+    # Ensure transactions table exists
     cur.execute("""
     CREATE TABLE IF NOT EXISTS transactions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -54,7 +54,13 @@ def init_db():
     )
     """)
 
-    # New investments table
+    # Make sure depositId column exists
+    cur.execute("PRAGMA table_info(transactions);")
+    cols = [row[1] for row in cur.fetchall()]
+    if "depositId" not in cols:
+        cur.execute("ALTER TABLE transactions ADD COLUMN depositId TEXT UNIQUE")
+
+    # Ensure investments table exists
     cur.execute("""
     CREATE TABLE IF NOT EXISTS investments (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
