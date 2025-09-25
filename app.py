@@ -19,7 +19,7 @@ else:
     API_TOKEN = SANDBOX_API_TOKEN
     PAWAPAY_URL = "https://api.sandbox.pawapay.io/deposits"
 
-DATABASE = os.path.join(os.path.dirname(__file__), "transactions.db")
+DATABASE = os.path.join(os.path.dirname(__file__), "investments.db")
 
 INTEREST_RATE = float(os.getenv("INTEREST_RATE", "0.10"))  # 10%
 INTEREST_DAYS = int(os.getenv("INTEREST_DAYS", "30"))      # 30 days
