@@ -32,53 +32,39 @@ logger = logging.getLogger(__name__)
 # --------------------
 # DATABASE
 # --------------------
-def init_db():
-    db = sqlite3.connect(DATABASE)
-    cur = db.cursor()
+def get_db():
+    db = getattr(g, "_database", None)
+    if db is None:
+        db = g._database = sqlite3.connect(DATABASE)
+        db.row_factory = sqlite3.Row
 
-    # Ensure transactions table exists
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS transactions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        depositId TEXT UNIQUE,
-        status TEXT,
-        amount REAL,
-        currency TEXT,
-        phoneNumber TEXT,
-        provider TEXT,
-        providerTransactionId TEXT,
-        failureCode TEXT,
-        failureMessage TEXT,
-        metadata TEXT,
-        received_at TEXT
-    )
-    """)
+        # ⚡ Ensure transactions table has depositId
+        cur = db.cursor()
+        cur.execute("PRAGMA table_info(transactions);")
+        cols = [row[1] for row in cur.fetchall()]
+        if "depositId" not in cols:
+            cur.execute("ALTER TABLE transactions ADD COLUMN depositId TEXT UNIQUE")
+            db.commit()
 
-    # Make sure depositId column exists
-    cur.execute("PRAGMA table_info(transactions);")
-    cols = [row[1] for row in cur.fetchall()]
-    if "depositId" not in cols:
-        cur.execute("ALTER TABLE transactions ADD COLUMN depositId TEXT UNIQUE")
+        # Ensure investments table exists
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS investments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            investmentId TEXT UNIQUE,
+            user_id TEXT,
+            depositId TEXT,
+            amount REAL,
+            status TEXT,
+            created_at TEXT,
+            confirmed_at TEXT,
+            return_date TEXT,
+            interest REAL,
+            balance REAL
+        )
+        """)
+        db.commit()
 
-    # Ensure investments table exists
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS investments (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        investmentId TEXT UNIQUE,
-        user_id TEXT,
-        depositId TEXT,
-        amount REAL,
-        status TEXT,
-        created_at TEXT,
-        confirmed_at TEXT,
-        return_date TEXT,
-        interest REAL,
-        balance REAL
-    )
-    """)
-
-    db.commit()
-    db.close()
+    return db
 
 
 def get_db():
