@@ -19,7 +19,8 @@ else:
     API_TOKEN = SANDBOX_API_TOKEN
     PAWAPAY_URL = "https://api.sandbox.pawapay.io/deposits"
 
-DATABASE = os.path.join(os.path.dirname(__file__), "transactions.db")
+# ✅ Use new DB file
+DATABASE = os.path.join(os.path.dirname(__file__), "transact.db")
 
 INTEREST_RATE = float(os.getenv("INTEREST_RATE", "0.10"))  # 10%
 INTEREST_DAYS = int(os.getenv("INTEREST_DAYS", "30"))      # 30 days
@@ -28,51 +29,59 @@ app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 # --------------------
 # DATABASE
 # --------------------
+def init_db():
+    """Create tables if they don't exist"""
+    db = sqlite3.connect(DATABASE)
+    cur = db.cursor()
+
+    # Transactions table
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS transactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        depositId TEXT UNIQUE,
+        status TEXT,
+        amount REAL,
+        currency TEXT,
+        phoneNumber TEXT,
+        provider TEXT,
+        providerTransactionId TEXT,
+        failureCode TEXT,
+        failureMessage TEXT,
+        metadata TEXT,
+        received_at TEXT
+    )
+    """)
+
+    # Investments table
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS investments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        investmentId TEXT UNIQUE,
+        user_id TEXT,
+        depositId TEXT,
+        amount REAL,
+        status TEXT,
+        created_at TEXT,
+        confirmed_at TEXT,
+        return_date TEXT,
+        interest REAL,
+        balance REAL
+    )
+    """)
+
+    db.commit()
+    db.close()
+
+
 def get_db():
     db = getattr(g, "_database", None)
     if db is None:
         db = g._database = sqlite3.connect(DATABASE)
         db.row_factory = sqlite3.Row
-        cur = db.cursor()
-
-        # ✅ Ensure transactions table exists
-        cur.execute("""
-        CREATE TABLE IF NOT EXISTS transactions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            depositId TEXT UNIQUE,
-            status TEXT,
-            amount REAL,
-            currency TEXT,
-            phoneNumber TEXT,
-            provider TEXT,
-            providerTransactionId TEXT,
-            failureCode TEXT,
-            failureMessage TEXT,
-            metadata TEXT,
-            received_at TEXT
-        )
-        """)
-
-        # ✅ Ensure investments table exists
-        cur.execute("""
-        CREATE TABLE IF NOT EXISTS investments (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            investmentId TEXT UNIQUE,
-            user_id TEXT,
-            depositId TEXT,
-            amount REAL,
-            status TEXT,
-            created_at TEXT,
-            confirmed_at TEXT,
-            return_date TEXT,
-            interest REAL,
-            balance REAL
-        )
-        """)
-        db.commit()
     return db
 
 
@@ -82,12 +91,14 @@ def close_connection(exception):
     if db is not None:
         db.close()
 
+
 # --------------------
 # ROUTES
 # --------------------
 @app.route("/")
 def home():
     return "eStack Investment Server ✅"
+
 
 # ---- INITIATE INVESTMENT (calls deposit flow) ----
 @app.route("/api/investments/initiate", methods=["POST"])
@@ -173,6 +184,7 @@ def initiate_investment():
         logger.exception("Error in initiate_investment")
         return jsonify({"error": "Internal server error", "detail": str(e)}), 500
 
+
 # ---- CALLBACK (update both deposits + investments) ----
 @app.route("/callback/deposit", methods=["POST"])
 def deposit_callback():
@@ -221,6 +233,7 @@ def deposit_callback():
         logger.exception("Error in deposit_callback")
         return jsonify({"error": "Internal server error"}), 500
 
+
 # ---- GET INVESTMENTS FOR USER ----
 @app.route("/api/investments/<user_id>", methods=["GET"])
 def get_investments(user_id):
@@ -234,12 +247,11 @@ def get_investments(user_id):
     rows = cur.fetchall()
     return jsonify({"investments": [dict(r) for r in rows]}), 200
 
+
 # --------------------
 # MAIN
 # --------------------
 if __name__ == "__main__":
-    # ✅ Ensure DB schema before app starts
-    with app.app_context():
-        get_db()
+    init_db()   # ✅ ensure DB tables are created
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
