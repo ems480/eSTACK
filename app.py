@@ -28,7 +28,6 @@ app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-
 # --------------------
 # DATABASE
 # --------------------
@@ -37,16 +36,27 @@ def get_db():
     if db is None:
         db = g._database = sqlite3.connect(DATABASE)
         db.row_factory = sqlite3.Row
-
-        # ⚡ Ensure transactions table has depositId
         cur = db.cursor()
-        cur.execute("PRAGMA table_info(transactions);")
-        cols = [row[1] for row in cur.fetchall()]
-        if "depositId" not in cols:
-            cur.execute("ALTER TABLE transactions ADD COLUMN depositId TEXT UNIQUE")
-            db.commit()
 
-        # Ensure investments table exists
+        # ✅ Ensure transactions table exists
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS transactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            depositId TEXT UNIQUE,
+            status TEXT,
+            amount REAL,
+            currency TEXT,
+            phoneNumber TEXT,
+            provider TEXT,
+            providerTransactionId TEXT,
+            failureCode TEXT,
+            failureMessage TEXT,
+            metadata TEXT,
+            received_at TEXT
+        )
+        """)
+
+        # ✅ Ensure investments table exists
         cur.execute("""
         CREATE TABLE IF NOT EXISTS investments (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -63,15 +73,6 @@ def get_db():
         )
         """)
         db.commit()
-
-    return db
-
-
-def get_db():
-    db = getattr(g, "_database", None)
-    if db is None:
-        db = g._database = sqlite3.connect(DATABASE)
-        db.row_factory = sqlite3.Row
     return db
 
 
@@ -81,14 +82,12 @@ def close_connection(exception):
     if db is not None:
         db.close()
 
-
 # --------------------
 # ROUTES
 # --------------------
 @app.route("/")
 def home():
     return "eStack Investment Server ✅"
-
 
 # ---- INITIATE INVESTMENT (calls deposit flow) ----
 @app.route("/api/investments/initiate", methods=["POST"])
@@ -174,7 +173,6 @@ def initiate_investment():
         logger.exception("Error in initiate_investment")
         return jsonify({"error": "Internal server error", "detail": str(e)}), 500
 
-
 # ---- CALLBACK (update both deposits + investments) ----
 @app.route("/callback/deposit", methods=["POST"])
 def deposit_callback():
@@ -223,7 +221,6 @@ def deposit_callback():
         logger.exception("Error in deposit_callback")
         return jsonify({"error": "Internal server error"}), 500
 
-
 # ---- GET INVESTMENTS FOR USER ----
 @app.route("/api/investments/<user_id>", methods=["GET"])
 def get_investments(user_id):
@@ -237,11 +234,12 @@ def get_investments(user_id):
     rows = cur.fetchall()
     return jsonify({"investments": [dict(r) for r in rows]}), 200
 
-
 # --------------------
 # MAIN
 # --------------------
 if __name__ == "__main__":
-    init_db()   # ✅ ensure DB tables are created
+    # ✅ Ensure DB schema before app starts
+    with app.app_context():
+        get_db()
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
